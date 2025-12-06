@@ -157,3 +157,58 @@ cover_url = facade.helper.get_cover_image()
 ```
 
 All of these features are exercised in the test-suite (excluding extremely large-file performance tests). Optional dependencies are declared under `[project.optional-dependencies]` in `pyproject.toml` (see the `text` extra for HTML utilities).
+
+## Integration & Pipeline Wrappers
+
+To support memory-safe, resilient ETL pipelines and to bridge the impedance mismatch between generic client libraries and strict pipeline contracts, `pyonix-core` now includes small, focused wrappers to handle streaming, retries, and adaptation to external `Source` interfaces.
+
+1) Streaming / Iterator Wrapper — `OnyxStreamWrapper`
+- Module: `pyonix_core.integration.stream_wrapper`
+- Purpose: Convert paginated client list calls into a seamless, memory-efficient generator that yields items one-by-one. Supports several pagination shapes (`items`/`results` attributes, `has_next`, `next_page_token`, or simple page/limit parameters).
+- Key options: `page_param`, `items_attr`, `page_size`, and `max_items` (handy for tests or bounded runs).
+- Example:
+
+```python
+from pyonix_core.integration.stream_wrapper import OnyxStreamWrapper
+
+def client_list(page=1):
+    # returns an object with .items and .has_next
+    ...
+
+stream = OnyxStreamWrapper(client_list, page_param='page')
+for record in stream:
+    process(record)
+```
+
+2) Resilience / Retry Decorator — `with_onyx_retries`
+- Module: `pyonix_core.integration.resilience`
+- Purpose: Lightweight exponential-backoff retry decorator for wrapping flaky API calls without modifying library code. Configurable `max_attempts`, `initial_delay`, and `backoff_factor`. Supports `fail_fast_exceptions` to immediately abort on unrecoverable errors (e.g., auth failures).
+- Example:
+
+```python
+from pyonix_core.integration.resilience import with_onyx_retries
+
+@with_onyx_retries(max_attempts=4, initial_delay=1.0)
+def fetch_page(page):
+    return client.list(page=page)
+```
+
+3) Protocol Adapter / Source Plugin — `OnyxSourceAdapter`
+- Module: `pyonix_core.integration.adapter`
+- Purpose: Adapter that wraps a client and one of its list methods to provide a minimal Source-like interface for pipelines (methods: `configure()`, `extract() -> Iterable`, `cleanup()`). The `extract()` method returns an `OnyxStreamWrapper` of the underlying list method and automatically applies the retry decorator.
+- Example:
+
+```python
+from pyonix_core.integration.adapter import OnyxSourceAdapter
+
+adapter = OnyxSourceAdapter(client, client.list)
+adapter.configure(api_key='...')
+for record in adapter.extract(page_size=100):
+    mapper(record)  # yields one record at a time
+adapter.cleanup()
+```
+
+Notes
+- These wrappers are intentionally small and dependency-free (tests use mocks). For production, you may want to extend the adapter to accept an HTTP session, custom logging hooks, or pluggable error mappings.
+- `max_items` on the stream wrapper can be used to bound streaming during tests or dry runs.
+

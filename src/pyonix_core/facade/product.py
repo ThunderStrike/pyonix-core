@@ -1,17 +1,31 @@
-from typing import Union, Optional, List
+from typing import Union, Optional, List, Dict, Any
 from pyonix_core.models.short.product import Product as ProductShort
 from pyonix_core.models.reference.product import Product as ProductRef
 from pyonix_core.codelists.enums import (
     ProductIdentifierType, 
     TitleType, 
     ContributorRole, 
-    PriceType
+    PriceType,
+    TextType
 )
+from pyonix_core.utils.identifiers import ISBN
+from pyonix_core.utils.flatten import ProductFlattener
+from pyonix_core.utils.text import to_markdown, clean_html
+from pyonix_core.facade.assets import AssetHelper
 
 class ProductFacade:
     def __init__(self, product: Union[ProductShort, ProductRef]):
         self._p = product
         self._is_short = isinstance(product, ProductShort)
+        self._helper = AssetHelper(product)
+
+    @property
+    def helper(self) -> AssetHelper:
+        return self._helper
+
+    def to_dict(self, flattener: Optional[ProductFlattener] = None) -> Dict[str, Any]:
+        f = flattener or ProductFlattener()
+        return f.flatten(self)
 
     @property
     def record_reference(self) -> Optional[str]:
@@ -22,7 +36,59 @@ class ProductFacade:
 
     @property
     def isbn13(self) -> Optional[str]:
-        return self.get_identifier(ProductIdentifierType.VALUE_15)
+        # Try direct ISBN-13
+        val = self.get_identifier(ProductIdentifierType.VALUE_15)
+        if val:
+            return ISBN.clean(val)
+        
+        # Try ISBN-10 and convert
+        val_10 = self.get_identifier(ProductIdentifierType.VALUE_02)
+        if val_10:
+            try:
+                return ISBN.to_13(val_10)
+            except ValueError:
+                pass
+        
+        return None
+
+    @property
+    def description_html(self) -> str:
+        """Returns the sanitized HTML description (TextType 03)."""
+        raw = self._get_text_content('03')
+        return clean_html(raw) if raw else ""
+
+    @property
+    def description_markdown(self) -> str:
+        """Returns the description converted to Markdown."""
+        raw = self._get_text_content('03')
+        return to_markdown(raw) if raw else ""
+
+    def _get_text_content(self, type_code: str) -> Optional[str]:
+        collateral = None
+        if self._is_short:
+            collateral = self._p.collateraldetail
+        else:
+            collateral = self._p.collateral_detail
+            
+        if not collateral:
+            return None
+            
+        texts = collateral.textcontent if self._is_short else collateral.text_content
+        for t in texts:
+            # Check type
+            t_type = None
+            if self._is_short:
+                t_type = t.x426.value if t.x426 else None
+            else:
+                t_type = t.text_type.value if t.text_type else None
+                
+            if t_type == type_code:
+                # Return text
+                if self._is_short:
+                    return t.d104[0].value if t.d104 else None
+                else:
+                    return t.text[0].value if t.text else None
+        return None
 
     @property
     def title(self) -> Optional[str]:
@@ -169,4 +235,103 @@ class ProductFacade:
             if current_type and current_type.value == id_type.value:
                 return value
                 
+        return None
+
+    # Methods for Flattener
+    def get_isbn13(self) -> Optional[str]:
+        return self.isbn13
+
+    def get_main_title(self) -> Optional[str]:
+        return self.title
+
+    def get_primary_author(self) -> Optional[str]:
+        c = self.contributors
+        return c[0] if c else None
+
+    def get_publisher_name(self) -> Optional[str]:
+        pub_detail = self._p.publishingdetail if self._is_short else self._p.publishing_detail
+        if not pub_detail:
+            return None
+        
+        publishers = pub_detail.publisher
+        for pub in publishers:
+            # We want the main publisher, usually role 01
+            # But for simplicity, just take the first one with a name
+            name = None
+            if self._is_short:
+                if pub.b081:
+                    name = pub.b081[0].value
+            else:
+                if pub.publisher_name:
+                    name = pub.publisher_name[0].value
+            
+            if name:
+                return name
+        return None
+
+    def get_publication_date(self) -> Optional[str]:
+        pub_detail = self._p.publishingdetail if self._is_short else self._p.publishing_detail
+        if not pub_detail:
+            return None
+            
+        dates = pub_detail.publishingdate if self._is_short else pub_detail.publishing_date
+        for d in dates:
+            # Role 01 is Publication Date
+            role = None
+            if self._is_short:
+                role = d.b163.value if d.b163 else None
+            else:
+                role = d.publishing_date_role.value if d.publishing_date_role else None
+                
+            if role == '01':
+                # Date value
+                if self._is_short:
+                    return d.b306.value if d.b306 else None
+                else:
+                    return d.date.value if d.date else None
+        return None
+
+    def get_publishing_status_code(self) -> Optional[str]:
+        pub_detail = self._p.publishingdetail if self._is_short else self._p.publishing_detail
+        if not pub_detail:
+            return None
+            
+        status = None
+        if self._is_short:
+            status = pub_detail.b394.value if pub_detail.b394 else None
+        else:
+            status = pub_detail.publishing_status.value if pub_detail.publishing_status else None
+            
+        return status
+
+    def get_price(self, currency: str = "USD") -> Optional[float]:
+        supplies = []
+        if self._is_short:
+            for ps in self._p.productsupply:
+                supplies.extend(ps.supplydetail)
+        else:
+            for ps in self._p.product_supply:
+                supplies.extend(ps.supply_detail)
+                
+        for supply in supplies:
+            prices = supply.price if self._is_short else supply.price
+            for p in prices:
+                # Check Currency (j152 / currency_code)
+                curr = None
+                if self._is_short:
+                    curr = p.j152.value if p.j152 else None
+                else:
+                    curr = p.currency_code.value if p.currency_code else None
+                
+                if curr == currency:
+                    amount = None
+                    if self._is_short:
+                        if p.j151:
+                            amount = p.j151.value
+                    else:
+                        if p.price_amount:
+                            amount = p.price_amount.value
+                    
+                    if amount is not None:
+                        return float(amount)
         return None

@@ -9,6 +9,9 @@ dependencies = [
     "lxml>=5.0.0",
 ]
 
+[project.optional-dependencies]
+text = ["bleach", "html2text"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

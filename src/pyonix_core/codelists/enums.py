@@ -12,6 +12,9 @@ from pyonix_core.models.short.list17 import List17 as ContributorRole
 from pyonix_core.models.short.list27 import List27 as SubjectSchemeIdentifier
 from pyonix_core.models.short.list163 import List163 as PublishingDateRole
 from pyonix_core.models.short.list151 import List151 as ContributorPlaceRelator
+from pyonix_core.models.short.list152 import List152 as TextItemType
+from pyonix_core.models.short.list153 import List153 as TextType
+from pyonix_core.models.short.list154 import List154 as ContentAudience
 from pyonix_core.models.short.list155 import List155 as ContentDateRole
 from pyonix_core.models.short.list158 import List158 as ResourceContentType
 from pyonix_core.models.short.list159 import List159 as ResourceMode

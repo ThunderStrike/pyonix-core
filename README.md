@@ -16,7 +16,7 @@ ONIX for Books is the international standard for representing and communicating 
 Requires Python 3.11 or higher.
 
 ```bash
-pip install .
+pip install pyonix-core
 ```
 
 ## Quick Start

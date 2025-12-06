@@ -85,3 +85,75 @@ This project is licensed under the MIT License.
 
 ---
 *Note: This project is currently in active development.*
+
+## Recent Features
+
+The following high-value features were recently added to `pyonix-core`. Each one is implemented to integrate cleanly with the existing facade and parsing architecture.
+
+1) Short Tag to Reference Tag Normalizer
+- Module: `pyonix_core.parsing.normalization`
+- Description: Uses an XSLT transform (bundleable EDItEUR XSLT) to convert ONIX Short Tags into Reference Tags before parsing. This lets the parser and generated dataclasses work consistently regardless of input tag style. For very large files, a streaming/SAX-based fallback is planned.
+- Quick usage:
+
+```python
+from pyonix_core.parsing.normalization import TagNormalizer
+from pyonix_core.parsing.parser import parse_onix_stream
+
+norm = TagNormalizer()
+with open('short_tag_onix.xml', 'rb') as fh:
+    normalized_stream = norm.normalize_stream(fh)
+    for product in parse_onix_stream(normalized_stream):
+        ...
+```
+
+2) Data Flattener (Pandas/CSV ready)
+- Module: `pyonix_core.utils.flatten`
+- Description: `ProductFlattener` converts a `ProductFacade` into a flat dictionary using a configurable `SerializationProfile`. Useful for creating CSV rows or constructing Pandas DataFrames without manually traversing the ONIX model.
+- Quick usage:
+
+```python
+from pyonix_core.utils.flatten import ProductFlattener
+from pyonix_core.facade.product import ProductFacade
+
+f = ProductFlattener()
+row = f.flatten(ProductFacade(product_model))
+```
+
+3) HTML Sanitizer & Extractor
+- Module: `pyonix_core.utils.text`
+- Description: Safe extraction and sanitization of HTML-like content found in ONIX `TextContent` composites. Uses `bleach` to sanitize and `html2text` to produce Markdown. These are optional dependencies under the `text` extra in `pyproject.toml`.
+- Quick usage:
+
+```python
+from pyonix_core.utils.text import clean_html, to_markdown
+
+safe_html = clean_html(raw_html)
+md = to_markdown(raw_html)
+```
+
+4) ISBN Tools (10/13 converter)
+- Module: `pyonix_core.utils.identifiers`
+- Description: Pure-Python `ISBN` utility for cleaning, validating, and converting ISBN-10 to ISBN-13. `ProductFacade.isbn13` now prefers an explicit ISBN-13 but will auto-convert valid ISBN-10 values when necessary.
+- Quick usage:
+
+```python
+from pyonix_core.utils.identifiers import ISBN
+
+ISBN.clean('0-306-40615-2')
+ISBN.validate('9780306406157')
+ISBN.to_13('0-306-40615-2')
+```
+
+5) Media Asset Helper
+- Module: `pyonix_core.facade.assets`
+- Description: `AssetHelper` simplifies locating front cover images and other collateral assets within the `CollateralDetail` composite and exposes a `helper` property on `ProductFacade`.
+- Quick usage:
+
+```python
+from pyonix_core.facade.product import ProductFacade
+
+facade = ProductFacade(product_model)
+cover_url = facade.helper.get_cover_image()
+```
+
+All of these features are exercised in the test-suite (excluding extremely large-file performance tests). Optional dependencies are declared under `[project.optional-dependencies]` in `pyproject.toml` (see the `text` extra for HTML utilities).

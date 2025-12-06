@@ -1,6 +1,6 @@
 [project]
 name = "pyonix-core"
-version = "0.1.1"
+version = "0.2.1"
 description = "A robust, secure, and maintainable ONIX 3.x Python library using xsdata."
 readme = "README.md"
 requires-python = ">=3.11"

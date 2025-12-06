@@ -43,7 +43,16 @@ class ProductFacade:
             else:
                 t_type = d.title_type.value if d.title_type else None
             
-            if t_type == TitleType.VALUE_01:
+            # print(f"DEBUG: Found TitleDetail with type {t_type}, expected {TitleType.VALUE_01.value}")
+            
+            # Handle both Enum object and raw value comparison
+            is_match = False
+            if hasattr(t_type, 'value'):
+                is_match = t_type.value == TitleType.VALUE_01.value
+            else:
+                is_match = t_type == TitleType.VALUE_01.value
+                
+            if is_match:
                 # Found distinctive title
                 elements = d.titleelement if self._is_short else d.title_element
                 for el in elements:
